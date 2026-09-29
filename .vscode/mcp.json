@@ -1,0 +1,18 @@
+{
+  "servers": {
+    "quark-drive-mcp": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/src/index.js"
+      ],
+      "env": {
+        "ARIA2_RPC_URL": "http://your-aria2-host:6800/jsonrpc",
+        "ARIA2_RPC_SECRET": "在此填写 aria2 密钥，未设置则留空",
+        "QUARK_COOKIE": "在此填写夸克网盘 Cookie",
+        "ARIA2_DOWNLOAD_DIR": "/downloads",
+        "MCP_LOG_LEVEL": "info"
+      }
+    }
+  }
+}

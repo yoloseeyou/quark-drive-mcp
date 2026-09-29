@@ -1,0 +1,52 @@
+/**
+ * MCP 服务核心：创建并组装 McpServer 实例。
+ *
+ * 这里把「服务能力」与「传输方式」彻底解耦：
+ *  - server.js 只负责注册 tools / resources
+ *  - transports/*.js 负责用 stdio 或 HTTP 把服务暴露出去
+ * 这样同一个服务既能被本地 CLI 客户端使用，也能被远程 HTTP 客户端使用。
+ */
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+
+import { registerTools } from "./tools/index.js";
+import { registerResources } from "./resources/index.js";
+
+/** 服务元信息，会通过 initialize 响应返回给客户端 */
+export const SERVER_INFO = {
+  name: "quark-drive-mcp",
+  title: "夸克网盘 MCP 服务",
+  version: "1.0.0"
+};
+
+const INSTRUCTIONS = [
+  "这是一个面向夸克网盘的 MCP 服务，提供三类能力：",
+  "1) 查询：drive_list_files（列出一层目录）、drive_resolve_path（按路径逐层解析 fid）。",
+  "2) 取链：drive_get_download_links（按 fid 获取带签名的下载直链）。",
+  "3) 下载：drive_push_to_aria2（提交到 aria2 RPC）、aria2_task_status、aria2_task_control。",
+  "另有 drive_cache_manage 用于查看与清理目录缓存。",
+  "推荐流程：先用 drive_resolve_path 或 drive_list_files 定位文件 fid，",
+  "再用 drive_get_download_links 获取直链，最后用 drive_push_to_aria2 提交下载。",
+  "目录查询结果按父目录 fid 缓存并带 TTL，返回文本会明确提示「缓存命中 / 来自网络」。"
+].join("\n");
+
+/**
+ * 创建一个全新的 MCP 服务实例。
+ *
+ * 每次创建都返回独立实例，这是 HTTP 有状态会话模式所必需的：
+ * 每个客户端会话必须绑定到自己的 McpServer，避免会话之间状态串扰。
+ * 注意：目录缓存位于 src/drive/cache.js 的模块级单例中，因此同一进程内多个会话共享缓存。
+ *
+ * @returns {McpServer}
+ */
+export function createServer () {
+  const server = new McpServer(SERVER_INFO, {
+    // 声明服务级能力：logging 允许服务端主动向客户端推送日志消息
+    capabilities: { logging: {} },
+    instructions: INSTRUCTIONS
+  });
+
+  registerTools(server);
+  registerResources(server);
+
+  return server;
+}

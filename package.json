@@ -1,0 +1,35 @@
+{
+  "name": "quark-drive-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "基于 Node.js 官方 SDK 的夸克网盘 MCP 服务（文件查询、直链获取与 aria2 RPC 下载）",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "quark-drive-mcp": "src/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@10.32.0",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:http": "node src/index.js --transport=http --port=3000",
+    "dev": "node --watch src/index.js",
+    "inspect": "npx @modelcontextprotocol/inspector node src/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "quark",
+    "pan",
+    "aria2"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "dotenv": "^16.4.5",
+    "zod": "^3.25.76"
+  }
+}
