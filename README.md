@@ -9,13 +9,13 @@
 
 ## 环境要求
 
-| 项目                      | 版本                                                |
-| ------------------------- | --------------------------------------------------- |
-| Node.js                   | `>= 18`                                             |
-| pnpm                      | `>= 9`（由 `packageManager` 固定为 `pnpm@10.32.0`） |
-| @modelcontextprotocol/sdk | `^1.17.0`                                           |
-| zod                       | `^3.25.76`                                          |
-| dotenv                    | `^16.4.5`                                           |
+| 项目                      | 版本       |
+| ------------------------- | ---------- |
+| Node.js                   | `>= 18`    |
+| pnpm                      | `>= 9`     |
+| @modelcontextprotocol/sdk | `^1.17.0`  |
+| zod                       | `^3.25.76` |
+| dotenv                    | `^16.4.5`  |
 
 > 本项目使用 **pnpm** 管理依赖，锁文件为 [`pnpm-lock.yaml`](pnpm-lock.yaml:1)，请勿再使用 npm/yarn 安装。
 > 若此前用 npm 装过依赖，建议先删除 `node_modules` 目录再执行 `pnpm install`，避免两套布局混用。
@@ -67,19 +67,30 @@ node src/index.js --help
 
 以下均为可选项，不填即使用默认值：
 
-| 变量名                    | 默认值                   | 说明                                           |
-| ------------------------- | ------------------------ | ---------------------------------------------- |
-| `ARIA2_DOWNLOAD_DIR`      | 空                       | 默认下载目录，留空则用 aria2 自身配置          |
-| `MCP_LOG_LEVEL`           | `info`                   | `debug` / `info` / `warn` / `error` / `silent` |
-| `DRIVE_CACHE_TTL_MS`      | `3600000`（1 小时）      | 目录缓存有效期（毫秒）                         |
-| `DRIVE_CACHE_MAX_ENTRIES` | `500`                    | 缓存条目上限，超限按 LRU 淘汰                  |
-| `QUARK_BASE_URL`          | `https://drive.quark.cn` | 接口域名                                       |
-| `QUARK_USER_AGENT`        | Chrome UA                | 伪装 UA，缺失或异常易触发风控                  |
-| `QUARK_REFERER`           | `https://pan.quark.cn/`  | 请求 Referer                                   |
-| `QUARK_ORIGIN`            | `https://pan.quark.cn`   | 请求 Origin                                    |
-| `QUARK_PR`                | `ucpro`                  | 接口公共 query `pr`                            |
-| `QUARK_FR`                | `pc`                     | 接口公共 query `fr`                            |
-| `UC_PARAM_STR`            | `dn`                     | 接口公共 query `uc_param_str`                  |
+| 变量名                    | 默认值                   | 说明                                                                       |
+| ------------------------- | ------------------------ | -------------------------------------------------------------------------- |
+| `ARIA2_DOWNLOAD_DIR`      | 空                       | 默认下载目录，留空则用 aria2 自身配置                                      |
+| `MCP_LOG_LEVEL`           | `info`                   | `debug` / `info` / `warn` / `error` / `silent`                             |
+| `DRIVE_CACHE_TTL_MS`      | `3600000`（1 小时）      | 目录缓存有效期（毫秒）                                                     |
+| `DRIVE_CACHE_MAX_ENTRIES` | `500`                    | 缓存条目上限，超限按 LRU 淘汰                                              |
+| `TAVILY_API_KEY`          | 空                       | Tavily 搜索 API 密钥，启用搜索/提取工具时必填                              |
+| `TAVILY_BASE_URL`         | `https://api.tavily.com` | Tavily API 地址                                                            |
+| `QUARK_BASE_URL`          | `https://drive.quark.cn` | 接口域名                                                                   |
+| `QUARK_USER_AGENT`        | 夸克 PC 客户端 UA        | 伪装 UA，**必须为夸克 PC 客户端 UA**；浏览器 UA 取直链会被拒（code=23018） |
+| `QUARK_REFERER`           | `https://pan.quark.cn/`  | 请求 Referer                                                               |
+| `QUARK_ORIGIN`            | `https://pan.quark.cn`   | 请求 Origin                                                                |
+| `QUARK_PR`                | `ucpro`                  | 接口公共 query `pr`                                                        |
+| `QUARK_FR`                | `pc`                     | 接口公共 query `fr`                                                        |
+| `UC_PARAM_STR`            | `dn`                     | 接口公共 query `uc_param_str`                                              |
+
+**启用 Tavily 搜索 / 提取功能**（可选）：在 [Tavily](https://tavily.com) 注册后获取 API Key（`tvly-` 开头），写入 `.env`：
+
+```bash
+# Tavily 搜索 API 密钥（tvly- 开头）
+TAVILY_API_KEY=tvly-xxxxxxxxxxxxxxxx
+```
+
+或由 MCP 客户端 `env` 注入。不配置时网盘与 aria2 功能不受影响，仅 `tavily_search` / `tavily_extract_links` 不可用。
 
 完整说明见 [`.env.example`](.env.example:1)。`.env` 已被 [`.gitignore`](.gitignore:4) 忽略，请勿提交真实凭证。
 
@@ -101,6 +112,7 @@ node src/index.js --help
         "ARIA2_RPC_URL": "http://your-aria2-host:6800/jsonrpc",
         "ARIA2_RPC_SECRET": "在此填写 aria2 密钥，未设置则留空",
         "QUARK_COOKIE": "在此填写夸克网盘 Cookie",
+        "TAVILY_API_KEY": "tvly-在此填写 Tavily API 密钥（可选，用于搜索/提取）",
         "ARIA2_DOWNLOAD_DIR": "/downloads",
         "MCP_LOG_LEVEL": "info"
       },
@@ -115,6 +127,7 @@ node src/index.js --help
 - `ARIA2_RPC_URL`：**链接** —— aria2 RPC 地址
 - `ARIA2_RPC_SECRET`：**密钥** —— 对应 aria2 的 `rpc-secret`（不要带 `token:` 前缀）
 - `QUARK_COOKIE`：**密码** —— 夸克网盘登录 Cookie
+- `TAVILY_API_KEY`：**Tavily 搜索密钥**（可选）—— 启用 `tavily_search` / `tavily_extract_links` 时填写
 - `disabled`：设为 `true` 可临时禁用该服务；若客户端不支持该字段，删除这一行即可
 - 其余变量都有默认值，可全部不填；`ARIA2_DOWNLOAD_DIR` 留空时使用 aria2 自身配置的目录
 
@@ -147,6 +160,8 @@ pnpm start:http
 | `aria2_task_status`        | `gids`                                      | 查询任务状态、进度与保存路径                       |
 | `aria2_task_control`       | `gids`、`action`                            | `pause` / `unpause` / `remove` / `forceRemove`     |
 | `drive_cache_manage`       | `action`、`pdir_fid`                        | 查看缓存统计，或 `clear` / `invalidate` 清理       |
+| `tavily_search`            | `query`、`max_results`、`search_depth`      | 基于 Tavily 的关键词 AI 搜索，返回标题/URL/摘要    |
+| `tavily_extract_links`     | `urls`、`extract_depth`                     | 读取页面正文并提取网盘分享链接                     |
 
 典型调用链：
 
@@ -275,6 +290,16 @@ export function registerHelloTool(server) {
 5. **传输与能力解耦**
    [`src/server.js`](src/server.js:1) 只负责注册能力并返回全新的 `McpServer` 实例；
    HTTP 模式下每个会话绑定独立实例，但目录缓存为模块级单例，因此跨会话共享。
+
+---
+
+## 常见问题（踩坑记录）
+
+| 现象                                                                                                         | 根因                                                                            | 处理                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 取直链报 `code=23018 download file size limit`（任何体积的文件都报，含 900MB 小文件）                        | UA 不是夸克 PC 客户端 UA，被判定为非客户端请求                                  | 使用夸克 PC 客户端 UA（`config.js` 已作为默认值内置；可用 `QUARK_USER_AGENT` 覆盖）                           |
+| aria2 任务长期停在 `active`、`totalLength=0`、`0 B/s`；用 curl/node 请求直链返回 **412 Precondition Failed** | 直链走 CDN（`dl-pc-zb.drive.quark.cn`），存在防盗链校验，仅带 UA + Referer 不够 | 下载请求头必须同时带上 `Cookie`（`aria2-client.js` 的 `buildDownloadHeaders()` 已注入 UA + Referer + Cookie） |
+| 提交任务后 `dir` 变成 `C:/.../PortableGit/film/...`                                                          | Windows 下 Git Bash（MSYS）会把参数/环境变量里的 `/film/...` 当 POSIX 路径转换  | 用支持 Windows 的 shell（PowerShell/CMD）执行，或确保 `dir` 不经由 Git Bash 传参                              |
 
 ---
 

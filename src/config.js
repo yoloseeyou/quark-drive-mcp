@@ -8,9 +8,15 @@
  */
 import { envInt, envStr } from "./env.js";
 
-/** 默认伪装 UA，避免因 UA 异常触发夸克风控 */
+/**
+ * 默认伪装 UA，避免因 UA 异常触发夸克风控。
+ *
+ * ⚠️ 必须使用「夸克 PC 客户端」UA：普通浏览器 UA 调用 /1/clouddrive/file/download
+ *    会被拒绝并返回 code=23018（download file size limit），实测 Chrome 120/131 均失败。
+ */
 const DEFAULT_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+  "quark-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4 Safari/537.36 Channel/395ed7d3";
 
 /** 对敏感字符串做脱敏，仅保留首尾少量字符便于排查 */
 function mask (value) {
@@ -51,6 +57,10 @@ function buildConfig () {
     cache: {
       ttlMs: envInt("DRIVE_CACHE_TTL_MS", 60 * 60 * 1000),
       maxEntries: envInt("DRIVE_CACHE_MAX_ENTRIES", 500)
+    },
+    tavily: {
+      apiKey: envStr("TAVILY_API_KEY"),
+      baseUrl: envStr("TAVILY_BASE_URL", "https://api.tavily.com").replace(/\/+$/, "")
     },
     runtime: {
       nodeVersion: process.version,
@@ -101,6 +111,10 @@ export function describeConfig () {
       downloadDir: config.aria2.downloadDir === "" ? "（留空，使用 aria2 默认目录）" : config.aria2.downloadDir
     },
     cache: config.cache,
+    tavily: {
+      apiKey: config.tavily.apiKey === "" ? "未配置" : `已配置（${mask(config.tavily.apiKey)}）`,
+      baseUrl: config.tavily.baseUrl
+    },
     runtime: config.runtime
   };
 }
@@ -109,5 +123,5 @@ export function describeConfig () {
 export function configSummaryForLog () {
   const described = describeConfig();
   if (!described.configured) return "配置未就绪";
-  return `quark=${described.quark.baseUrl} aria2=${described.aria2.rpcUrl} cacheTtl=${described.cache.ttlMs}ms`;
+  return `quark=${described.quark.baseUrl} aria2=${described.aria2.rpcUrl} tavily=${described.tavily.apiKey} cacheTtl=${described.cache.ttlMs}ms`;
 }

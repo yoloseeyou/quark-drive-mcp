@@ -79,6 +79,8 @@ export function registerAppInfoResources (server) {
         "| `aria2_task_status` | 查询任务状态与进度 |",
         "| `aria2_task_control` | 暂停 / 继续 / 删除任务 |",
         "| `drive_cache_manage` | 查看统计或清理目录缓存 |",
+        "| `tavily_search` | 关键词 AI 搜索（需 TAVILY_API_KEY） |",
+        "| `tavily_extract_links` | 读取页面并提取网盘分享链接（需 TAVILY_API_KEY） |",
         "",
         "## 缓存说明",
         "- 目录查询结果按父目录 `fid` 缓存在内存中，键为 `pdir_fid:page:size`",
