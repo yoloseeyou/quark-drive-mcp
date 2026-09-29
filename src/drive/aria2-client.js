@@ -83,10 +83,15 @@ export async function getVersion () {
   return call("aria2.getVersion");
 }
 
-/** 构造下载请求头：夸克直链需要正确的 UA 与 Referer 才能下载 */
+/** 构造下载请求头：夸克直链需要正确的 UA、Referer 与 Cookie 才能下载 */
 export function buildDownloadHeaders () {
   const { quark } = getConfig();
-  return [`User-Agent: ${quark.userAgent}`, `Referer: ${quark.referer}`];
+  return [
+    `User-Agent: ${quark.userAgent}`,
+    `Referer: ${quark.referer}`,
+    // CDN 存在防盗链校验，缺少 Cookie 时直链会返回 412 Precondition Failed
+    `Cookie: ${quark.cookie}`
+  ];
 }
 
 /**
