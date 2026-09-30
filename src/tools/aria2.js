@@ -119,11 +119,65 @@ async function describeShareItems (pwdId, passcode, fids, budget) {
   return found;
 }
 
+/** 名称未知时的占位前缀；带此前缀的名字不能作为文件名下发给 aria2 */
+const UNKNOWN_NAME_PREFIX = "（名称未知）";
+
+/**
+ * 清洗任意外部字符串，使其可以安全地用作 aria2 的 out。
+ *
+ * aria2 的 out 会被当作**相对路径**解析，因此不能透传未经处理的外部字符串：
+ *  - `/` 与 `\` 会被解释为路径分隔符，可能写到目标目录之外或中途截断；
+ *  - 控制字符（含 NUL）会破坏目录项名字；
+ *  - 仅剩 `.` / `..` 的名称指向目录自身或父目录，必须拒绝。
+ *
+ * @param {string} value
+ * @returns {string} 清洗后的名称；不可用时返回空串
+ */
+function cleanOutName (value) {
+  const cleaned = String(value ?? "")
+    .replace(/[/\\]/g, "_")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim();
+
+  return cleaned === "." || cleaned === ".." ? "" : cleaned;
+}
+
+/**
+ * 把「已解析出的真实文件名」规整为可安全下发给 aria2 的 out。
+ *
+ * 在 cleanOutName 的基础上额外判定「名字是否可信」：
+ *  - 占位名（「（名称未知）…」）表示本次没解析出名字，返回空串交由 aria2 自行取名，
+ *    而不是把占位符当成真实文件名写到磁盘上；
+ *  - 空串同样返回空串。
+ *
+ * @param {string} fileName
+ * @returns {string} 可直接用作 addUri out 的名称；不可用时返回空串
+ */
+export function toSafeOutName (fileName) {
+  const raw = String(fileName ?? "").trim();
+
+  if (raw === "" || raw.startsWith(UNKNOWN_NAME_PREFIX)) return "";
+
+  const cleaned = cleanOutName(raw);
+
+  if (cleaned === "") return "";
+
+  return cleaned;
+}
+
 /** 组装一条待确认任务记录 */
 function makeTask (index, base, meta) {
   const { source, fid, url, dirLabel, out } = base;
   const fileName =
     meta.file_name !== "" ? meta.file_name : (fid !== "" ? `（名称未知）${fid}` : `（名称未知）${hostOf(url)}`);
+
+  // 落盘名在「预览阶段」就锁定下来，让预览展示的落盘路径与最终结果一致：
+  //  - 调用方显式传入 out 时以 out 为准（仅单任务场景），同样要经 cleanOutName 清洗，
+  //    否则外部字符串里的 ../ 会被 aria2 当成相对路径写到目标目录之外；
+  //  - 否则用已经解析出的真实文件名兜底，不再完全依赖夸克 CDN 的
+  //    Content-Disposition 响应头（该头在部分节点上不合 RFC，会导致文件名退化成哈希）。
+  const explicitName = out !== undefined && out !== "" ? cleanOutName(out) : "";
+  const targetName = explicitName !== "" ? explicitName : toSafeOutName(fileName);
 
   return {
     index,
@@ -133,8 +187,8 @@ function makeTask (index, base, meta) {
     source,
     fid,
     url,
-    out: out ?? "",
-    targetPath: out === undefined || out === "" ? `${dirLabel}／（沿用原文件名）` : `${dirLabel}／${out}`
+    out: targetName,
+    targetPath: targetName === "" ? `${dirLabel}／（沿用原文件名）` : `${dirLabel}／${targetName}`
   };
 }
 
@@ -169,7 +223,7 @@ async function buildPushPlan ({ fids, share_pwd_id, share_passcode, share_fids, 
     source = "fid";
     for (const fid of ownFids) {
       const meta = describe(fid);
-      tasks.push(makeTask(tasks.length + 1, { source, fid, url: "", dirLabel, out: "" }, meta));
+      tasks.push(makeTask(tasks.length + 1, { source, fid, url: "", dirLabel, out }, meta));
       totalSize += Number(meta.size ?? 0);
     }
   } else if (sharedFids.length > 0) {
@@ -183,14 +237,14 @@ async function buildPushPlan ({ fids, share_pwd_id, share_passcode, share_fids, 
 
     for (const fid of sharedFids) {
       const meta = known.get(fid) ?? describe(fid);
-      tasks.push(makeTask(tasks.length + 1, { source, fid, url: "", dirLabel, out: "" }, meta));
+      tasks.push(makeTask(tasks.length + 1, { source, fid, url: "", dirLabel, out }, meta));
       totalSize += Number(meta.size ?? 0);
     }
   } else {
     source = "url";
     for (const url of directUrls) {
       const meta = describe(url);
-      tasks.push(makeTask(tasks.length + 1, { source, fid: "", url, dirLabel, out: "" }, meta));
+      tasks.push(makeTask(tasks.length + 1, { source, fid: "", url, dirLabel, out }, meta));
       totalSize += Number(meta.size ?? 0);
     }
   }
@@ -246,7 +300,10 @@ async function submitPushPlan (plan) {
       );
     }
 
-    const gid = await addUri(url, { dir: plan.dir, out: plan.out, split: plan.split });
+    // 用清单里已锁定的落盘名 task.out，而不是全局 plan.out：
+    // 前者在预览阶段就已按「显式 out > 已解析出的真实文件名 > 留空」逐任务解析完毕，
+    // 因此无论夸克 CDN 的 Content-Disposition 响应头是否合规，文件名都能正确落盘。
+    const gid = await addUri(url, { dir: plan.dir, out: task.out, split: plan.split });
     tasks.push({ ...task, url, urlHost: hostOf(url), gid });
   }
 
@@ -264,7 +321,10 @@ export function registerAria2Tools (server) {
         "第一次调用（不带 confirm_token）只返回待确认清单与一次性令牌，**此时不会获取直链、也不会产生任何下载任务**；" +
         "请把清单呈现给用户，得到明确确认后再携带 confirm_token 调用一次，服务端才会获取直链并提交。" +
         "目标来源三选一：fids（自有网盘文件）、share_pwd_id + share_fids（分享内文件）、urls（直接地址）；" +
-        "可用 items 提供文件名与大小以便清单展示。服务端自动注入夸克直链所需的 UA/Referer 请求头，" +
+        "可用 items 提供文件名与大小以便清单展示。落盘文件名优先使用清单中解析出的真实文件名" +
+        "（通过 aria2 out 选项逐任务显式下发，不依赖夸克 CDN 的 Content-Disposition 响应头，" +
+        "该头在部分节点上不合 RFC，会导致文件名退化成哈希或把空格写成 +）；" +
+        "服务端自动注入夸克直链所需的 UA/Referer 请求头，" +
         "dir 缺省使用 ARIA2_DOWNLOAD_DIR，out 仅单任务可用。",
       inputSchema: {
         fids: z.array(z.string().min(1)).optional().describe("自有网盘文件 fid 列表，服务端会自动获取直链"),

@@ -4,7 +4,9 @@
  * 协议要点：
  *  - 端点固定为 JSON-RPC 2.0，Body 形如 { id, jsonrpc:"2.0", method, params }；
  *  - 若服务端配置了 rpc-secret，params[0] 必须是 `token:<secret>`，否则整组参数前移；
- *  - addUri 的 options 支持 dir（目录）、out（文件名）、header（请求头数组）。
+ *  - addUri 的 options 支持 dir（目录）、out（文件名）、split（并发连接数）、header（请求头数组）
+ *    与 content-disposition；指定 out 时会同时关闭 content-disposition，
+ *    避免夸克 CDN 不合规的响应头覆盖掉调用方已经确定的文件名。
  *
  * 夸克直链存在防盗链，因此提交任务时统一注入 User-Agent 与 Referer 请求头。
  */
@@ -113,7 +115,18 @@ export async function addUri (uris, { dir, out, split } = {}) {
 
   const targetDir = dir || aria2.downloadDir;
   if (targetDir !== "") options.dir = targetDir;
-  if (out) options.out = out;
+
+  if (out) {
+    options.out = out;
+    // 防御性设置：显式给出 out 时一并屏蔽响应头里的 Content-Disposition。
+    // 夸克 CDN 部分节点回显的该头不合 RFC 2616/5987（文件名未加引号且含裸空格），
+    // 解析失败时 aria2 会退化成用 URL 路径末段取名 —— 而夸克直链的路径末段是 40 位哈希，
+    // 侥幸解析成功也会把空格写成 +（实测：dl-pc-zb 节点原样保留 +，dl-pc-zb-j 节点把 + 解码成空格后该头失效）。
+    // 注意：aria2 中 out 的优先级本就高于该响应头，所以这一行是「堵死退路」的兜底；
+    // 真正的修复是调用方必须把已知文件名作为 out 传进来。未指定 out 时保持默认行为。
+    options["content-disposition"] = "false";
+  }
+
   if (Number.isInteger(split) && split > 0) options.split = split;
 
   return call("aria2.addUri", [list, options]);
