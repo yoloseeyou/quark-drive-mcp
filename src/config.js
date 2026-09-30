@@ -51,6 +51,10 @@ function buildConfig () {
       ttlMs: envInt("DRIVE_CACHE_TTL_MS", 60 * 60 * 1000),
       maxEntries: envInt("DRIVE_CACHE_MAX_ENTRIES", 500)
     },
+    confirm: {
+      // 写操作确认令牌的有效期，默认 5 分钟
+      ttlMs: envInt("CONFIRM_TTL_MS", 5 * 60 * 1000)
+    },
     tavily: {
       apiKey: envStr("TAVILY_API_KEY"),
       baseUrl: envStr("TAVILY_BASE_URL", "https://api.tavily.com").replace(/\/+$/, "")
@@ -122,6 +126,7 @@ export function describeConfig () {
       downloadDir: config.aria2.downloadDir === "" ? "（留空，使用 aria2 默认目录）" : config.aria2.downloadDir
     },
     cache: config.cache,
+    confirm: config.confirm,
     tavily: {
       apiKey: config.tavily.apiKey === "" ? "未配置" : `已配置（${mask(config.tavily.apiKey)}）`,
       baseUrl: config.tavily.baseUrl

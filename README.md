@@ -151,21 +151,21 @@ pnpm start:http
 
 ### Tools（工具）
 
-| 名称                             | 关键入参                                    | 说明                                                            |
-| -------------------------------- | ------------------------------------------- | --------------------------------------------------------------- |
-| `drive_list_files`               | `pdir_fid`、`page`、`size`、`force_refresh` | 列出一层目录，支持分页，返回缓存提示                            |
-| `drive_resolve_path`             | `path`、`force_refresh`                     | 把 `/film/明天也要上班` 逐层解析为 `fid`                        |
-| `drive_get_download_links`       | `fids`                                      | 按文件 `fid` 获取带签名的下载直链（约 1 小时有效）              |
-| `drive_push_to_aria2`            | `fids` 或 `urls`、`dir`、`out`、`split`     | 提交候选下载任务，自动注入 UA/Referer 请求头                    |
-| `aria2_task_status`              | `gids`                                      | 查询任务状态、进度与保存路径                                    |
-| `aria2_task_control`             | `gids`、`action`                            | `pause` / `unpause` / `remove` / `forceRemove` / `removeResult` |
-| `drive_cache_manage`             | `action`、`pdir_fid`                        | 查看缓存统计，或 `clear` / `invalidate` 清理                    |
-| `tavily_search`                  | `query`、`max_results`、`search_depth`      | 基于 Tavily 的关键词 AI 搜索，返回标题/URL/摘要                 |
-| `tavily_extract_links`           | `urls`、`extract_depth`                     | 读取指定页面正文并提取网盘分享链接                              |
-| `tavily_search_links`            | `query`、`max_results`、`extract_limit`     | 一步完成搜索 + 抓正文 + 提取网盘链接（含提取码）                |
-| `drive_parse_share_link`         | `link`                                      | 解析分享链接为 `pwd_id` 与提取码（不发起网络请求）              |
-| `drive_list_share_files`         | `link` 或 `pwd_id`、`passcode`、`pdir_fid`  | 浏览分享内文件（只读）                                          |
-| `drive_get_share_download_links` | `link`/`pwd_id`、`passcode`、`fids`/`path`  | **无需转存**，直接换取分享内文件的下载直链                      |
+| 名称                             | 关键入参                                                  | 说明                                                            |
+| -------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------- |
+| `drive_list_files`               | `pdir_fid`、`page`、`size`、`force_refresh`               | 列出一层目录，支持分页，返回缓存提示                            |
+| `drive_resolve_path`             | `path`、`force_refresh`                                   | 把 `/film/明天也要上班` 逐层解析为 `fid`                        |
+| `drive_get_download_links`       | `fids`                                                    | 按文件 `fid` 获取带签名的下载直链（约 1 小时有效）              |
+| `drive_push_to_aria2`            | `fids`/`share_fids`/`urls`、`dir`、`out`、`confirm_token` | 两阶段提交：先返回待确认清单，用户确认后才下载                  |
+| `aria2_task_status`              | `gids`                                                    | 查询任务状态、进度与保存路径                                    |
+| `aria2_task_control`             | `gids`、`action`                                          | `pause` / `unpause` / `remove` / `forceRemove` / `removeResult` |
+| `drive_cache_manage`             | `action`、`pdir_fid`                                      | 查看缓存统计，或 `clear` / `invalidate` 清理                    |
+| `tavily_search`                  | `query`、`max_results`、`search_depth`                    | 基于 Tavily 的关键词 AI 搜索，返回标题/URL/摘要                 |
+| `tavily_extract_links`           | `urls`、`extract_depth`                                   | 读取指定页面正文并提取网盘分享链接                              |
+| `tavily_search_links`            | `query`、`max_results`、`extract_limit`                   | 一步完成搜索 + 抓正文 + 提取网盘链接（含提取码）                |
+| `drive_parse_share_link`         | `link`                                                    | 解析分享链接为 `pwd_id` 与提取码（不发起网络请求）              |
+| `drive_list_share_files`         | `link` 或 `pwd_id`、`passcode`、`pdir_fid`                | 浏览分享内文件（只读）                                          |
+| `drive_get_share_download_links` | `link`/`pwd_id`、`passcode`、`fids`/`path`                | **无需转存**，直接换取分享内文件的下载直链                      |
 
 典型调用链：
 
@@ -184,6 +184,32 @@ flowchart LR
 
 > 说明：分享内文件的 `fid` 属于分享空间，与本账号网盘 `fid` 不同 —— 前者用 `drive_get_share_download_links`，
 > 后者用 `drive_get_download_links`。两条链路拿到直链后都统一交给 `drive_push_to_aria2` 下载，**全程无需转存**。
+
+### 写操作确认闸门
+
+`drive_push_to_aria2` 是唯一的写操作，采用**两阶段提交**，避免模型擅自下载或误选文件浪费直链：
+
+```mermaid
+flowchart TD
+    A[第一次调用 不带 confirm_token] --> B[仅整理清单 不取直链 不产生任务]
+    B --> C[返回 stage=preview 清单与一次性令牌]
+    C --> D[模型把清单交给用户]
+    D --> E{用户确认}
+    E -->|拒绝| F[结束 未取直链 未产生任务]
+    E -->|确认| G[第二次调用 携带 confirm_token]
+    G --> H[校验令牌后获取直链]
+    H --> I[提交 aria2 并返回 gids]
+    I --> J[令牌销毁 仅可用一次]
+```
+
+清单包含：文件名、大小、类型、来源（自有网盘 / 分享 / 直接地址）、地址、下载位置预览与合计大小。
+
+令牌的安全性质：
+
+- **绑定计划内容**：提交时直接执行预览时锁定的计划，不重新解析入参，杜绝「预览 A、提交 B」
+- **一次性使用**：消费后立即销毁，重复使用报错
+- **有效期**：默认 5 分钟（`CONFIRM_TTL_MS` 可调），过期需重新预览
+- **提交阶段禁止再传目标参数**：同时传 `fids`/`share_fids`/`urls` 会被拒绝
 
 ### Resources（资源）
 

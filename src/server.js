@@ -33,6 +33,8 @@ const INSTRUCTIONS = [
   "   drive_get_share_download_links 取直链 → drive_push_to_aria2（urls 参数）提交下载。",
   "B. 自有文件下载：drive_resolve_path 或 drive_list_files 定位 fid → drive_get_download_links 取直链 → drive_push_to_aria2。",
   "注意：分享内 fid 与网盘 fid 不是同一套，后者才是 drive_get_download_links 的输入。",
+  "⚠️ 提交下载属于写操作：drive_push_to_aria2 默认只返回待确认清单（文件名、大小、地址、下载位置、合计大小）与一次性 confirm_token，" +
+  "必须先把清单交给用户确认，再携带 confirm_token 调用一次才会真正获取直链并提交。",
   "目录查询结果按父目录 fid 缓存并带 TTL，返回文本会明确提示「缓存命中 / 来自网络」。"
 ].join("\n");
 
