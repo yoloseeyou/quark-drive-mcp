@@ -8,7 +8,9 @@
  */
 import { describeConfig } from "../config.js";
 import { cacheStats } from "../drive/cache.js";
+import { confirmStoreStats } from "../drive/confirm-store.js";
 import { SERVER_INFO } from "../server.js";
+import { tavilyCallStats } from "../search/tavily-client.js";
 
 /** 服务启动时间，用于说明资源内容可以动态计算 */
 const STARTED_AT = new Date().toISOString();
@@ -35,7 +37,10 @@ export function registerAppInfoResources (server) {
         startedAt: STARTED_AT,
         logLevel: process.env.MCP_LOG_LEVEL || "info",
         drive: describeConfig(),
-        cache: cacheStats()
+        cache: cacheStats(),
+        // 性能观测：Tavily 各端点的累计调用次数与耗时，以及写操作确认令牌的统计
+        tavilyCalls: tavilyCallStats(),
+        confirmTokens: confirmStoreStats()
       };
 
       return {

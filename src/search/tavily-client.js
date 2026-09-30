@@ -22,6 +22,35 @@ export class TavilyApiError extends Error {
   }
 }
 
+/** 按端点累计的调用统计，用于性能观测 */
+const callStats = new Map();
+
+/** 记录一次调用的耗时 */
+function recordTavilyCall (pathname, elapsedMs) {
+  const entry = callStats.get(pathname) ?? { calls: 0, totalMs: 0, lastMs: 0, maxMs: 0 };
+
+  entry.calls += 1;
+  entry.totalMs += elapsedMs;
+  entry.lastMs = elapsedMs;
+  entry.maxMs = Math.max(entry.maxMs, elapsedMs);
+
+  callStats.set(pathname, entry);
+}
+
+/**
+ * 获取 Tavily 调用统计（性能观测用）。
+ * @returns {{pathname: string, calls: number, avgMs: number, lastMs: number, maxMs: number}[]}
+ */
+export function tavilyCallStats () {
+  return [...callStats.entries()].map(([pathname, entry]) => ({
+    pathname,
+    calls: entry.calls,
+    avgMs: entry.calls > 0 ? Math.round(entry.totalMs / entry.calls) : 0,
+    lastMs: entry.lastMs,
+    maxMs: entry.maxMs
+  }));
+}
+
 /** 读取 Tavily 配置；API Key 缺失时抛出可读错误 */
 function readTavilyConfig () {
   const { tavily } = getConfig();
@@ -47,6 +76,8 @@ async function request (pathname, body) {
 
   logger.debug(`Tavily 请求 ${url}`);
 
+  const startedAt = Date.now();
+
   let response;
   try {
     response = await fetch(url, {
@@ -58,10 +89,16 @@ async function request (pathname, body) {
       body: JSON.stringify(body)
     });
   } catch (err) {
+    recordTavilyCall(pathname, Date.now() - startedAt);
     throw new TavilyApiError(`无法连接 Tavily 接口（${tavily.baseUrl}）：${err.message}`);
   }
 
   const text = await response.text();
+  const elapsedMs = Date.now() - startedAt;
+
+  // 性能观测：每次请求的耗时都打点，便于定位瓶颈（MCP_LOG_LEVEL=debug 可见）
+  recordTavilyCall(pathname, elapsedMs);
+  logger.debug(`Tavily ${pathname} 返回：${elapsedMs}ms（HTTP ${response.status}，响应 ${text.length} 字符）`);
 
   let payload;
   try {

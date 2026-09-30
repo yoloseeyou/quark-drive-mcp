@@ -24,6 +24,15 @@ const shareLinkSchema = z.object({
   foundIn: z.string().describe("来源位置：url 结果地址本身 / snippet 搜索摘要 / raw 页面正文")
 });
 
+/** 分阶段耗时，用于性能观测与基线对比 */
+const timingSchema = z.object({
+  searchMs: z.number().describe("搜索阶段耗时（毫秒）"),
+  extractMs: z.number().describe("正文抓取阶段耗时（毫秒），未抓取时为 0"),
+  totalMs: z.number().describe("本工具总耗时（毫秒）"),
+  pagesRequested: z.number().describe("请求抓取的页面数"),
+  pagesFetched: z.number().describe("成功返回正文的页面数")
+});
+
 export function registerSearchTools (server) {
   // ── 工具 1：关键词 AI 搜索 ──────────────────────────────────────────────
   server.registerTool(
@@ -61,7 +70,8 @@ export function registerSearchTools (server) {
             extractedCount: z.number().describe("该结果提取到的网盘链接数")
           })
         ),
-        links: z.array(shareLinkSchema).describe("汇总去重后的网盘链接，来自结果地址、摘要与正文")
+        links: z.array(shareLinkSchema).describe("汇总去重后的网盘链接，来自结果地址、摘要与正文"),
+        timing: timingSchema
       },
       annotations: {
         title: "Tavily 关键词搜索",
@@ -72,6 +82,7 @@ export function registerSearchTools (server) {
     },
     async ({ query, max_results, search_depth, topic, include_domains, include_answer, include_raw_content }) => {
       try {
+        const startedAt = Date.now();
         const data = await search({
           query,
           maxResults: max_results,
@@ -81,6 +92,7 @@ export function registerSearchTools (server) {
           includeAnswer: include_answer,
           includeRawContent: include_raw_content
         });
+        const totalMs = Date.now() - startedAt;
 
         const rawResults = Array.isArray(data.results) ? data.results : [];
         const collected = [];
@@ -145,6 +157,8 @@ export function registerSearchTools (server) {
           );
         }
 
+        lines.push("", `⏱ 搜索耗时 ${totalMs}ms（Tavily 自报 ${Number(data.response_time ?? 0)}s）`);
+
         return {
           content: [{ type: "text", text: lines.join("\n") }],
           structuredContent: {
@@ -153,7 +167,8 @@ export function registerSearchTools (server) {
             responseTime: Number(data.response_time ?? 0),
             count: results.length,
             results,
-            links
+            links,
+            timing: { searchMs: totalMs, extractMs: 0, totalMs, pagesRequested: 0, pagesFetched: 0 }
           }
         };
       } catch (err) {
@@ -189,7 +204,8 @@ export function registerSearchTools (server) {
             url: z.string(),
             error: z.string()
           })
-        )
+        ),
+        timing: timingSchema
       },
       annotations: {
         title: "读取页面提取分享链接",
@@ -200,7 +216,9 @@ export function registerSearchTools (server) {
     },
     async ({ urls, extract_depth }) => {
       try {
+        const startedAt = Date.now();
         const data = await extract({ urls, extractDepth: extract_depth });
+        const totalMs = Date.now() - startedAt;
 
         const results = Array.isArray(data.results) ? data.results : [];
         const failedRaw = Array.isArray(data.failed_results) ? data.failed_results : [];
@@ -246,12 +264,21 @@ export function registerSearchTools (server) {
           failed.forEach((item) => lines.push(`  - ${item.url}：${item.error}`));
         }
 
+        lines.push("", `⏱ 抓取耗时 ${totalMs}ms（请求 ${urls.length} 页，返回 ${pages.length} 页）`);
+
         return {
           content: [{ type: "text", text: lines.join("\n") }],
           structuredContent: {
             total,
             pages,
-            failed
+            failed,
+            timing: {
+              searchMs: 0,
+              extractMs: totalMs,
+              totalMs,
+              pagesRequested: urls.length,
+              pagesFetched: pages.length
+            }
           }
         };
       } catch (err) {
@@ -302,7 +329,8 @@ export function registerSearchTools (server) {
             url: z.string(),
             error: z.string()
           })
-        )
+        ),
+        timing: timingSchema
       },
       annotations: {
         title: "搜索并提取网盘链接",
@@ -313,6 +341,7 @@ export function registerSearchTools (server) {
     },
     async ({ query, max_results, extract_limit, extract_depth, search_depth, include_domains }) => {
       try {
+        const searchStartedAt = Date.now();
         const data = await search({
           query,
           maxResults: max_results,
@@ -320,6 +349,7 @@ export function registerSearchTools (server) {
           includeDomains: include_domains,
           includeAnswer: false
         });
+        const searchMs = Date.now() - searchStartedAt;
 
         const rawResults = Array.isArray(data.results) ? data.results : [];
         const collected = [];
@@ -342,9 +372,12 @@ export function registerSearchTools (server) {
         const targets = pageTargets.slice(0, extract_limit);
         const failed = [];
         let extractedPages = 0;
+        let pagesFetched = 0;
+        let extractMs = 0;
 
         // 来源三：批量抓取正文（一次请求覆盖多个页面）
         if (targets.length > 0) {
+          const extractStartedAt = Date.now();
           try {
             const extracted = await extract({
               urls: targets.map((item) => item.url),
@@ -352,6 +385,7 @@ export function registerSearchTools (server) {
             });
 
             const pages = Array.isArray(extracted.results) ? extracted.results : [];
+            pagesFetched = pages.length;
 
             for (const page of pages) {
               const pageUrl = String(page.url ?? "");
@@ -378,14 +412,18 @@ export function registerSearchTools (server) {
             for (const item of targets) {
               failed.push({ url: item.url, error: err?.message ? String(err.message) : String(err) });
             }
+          } finally {
+            extractMs = Date.now() - extractStartedAt;
           }
         }
 
         const links = sortShareLinks(dedupeShareLinks(collected));
+        const totalMs = Date.now() - searchStartedAt;
 
         const lines = [
           `🔍 搜索：${query}`,
-          `结果 ${rawResults.length} 条 · 抓取页面 ${targets.length} 个（有产出 ${extractedPages} 个）· 去重后 ${links.length} 条网盘链接`
+          `结果 ${rawResults.length} 条 · 抓取页面 ${targets.length} 个（有产出 ${extractedPages} 个）· 去重后 ${links.length} 条网盘链接`,
+          `⏱ 搜索 ${searchMs}ms · 抓正文 ${extractMs}ms · 合计 ${totalMs}ms（请求 ${targets.length} 页，返回 ${pagesFetched} 页）`
         ];
 
         if (links.length === 0) {
@@ -422,7 +460,14 @@ export function registerSearchTools (server) {
             extractedPages,
             total: links.length,
             links,
-            failed
+            failed,
+            timing: {
+              searchMs,
+              extractMs,
+              totalMs,
+              pagesRequested: targets.length,
+              pagesFetched
+            }
           }
         };
       } catch (err) {
