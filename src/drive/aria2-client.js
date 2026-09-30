@@ -25,7 +25,10 @@ const CONTROL_METHODS = {
   pause: "aria2.pause",
   unpause: "aria2.unpause",
   remove: "aria2.remove",
-  forceRemove: "aria2.forceRemove"
+  forceRemove: "aria2.forceRemove",
+  // 已 complete / error / removed 的任务不在活动列表里，remove 会报 not found，
+  // 需要用 removeDownloadResult 清除其下载记录
+  removeResult: "aria2.removeDownloadResult"
 };
 
 let nextId = Date.now();

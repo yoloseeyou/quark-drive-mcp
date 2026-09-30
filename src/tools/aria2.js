@@ -218,8 +218,10 @@ export function registerAria2Tools (server) {
     {
       title: "控制下载任务",
       description:
-        "对任务执行 pause（暂停）、unpause（继续）、remove（移除）或 forceRemove（强制移除）。" +
-        "注意：aria2 不允许直接移除 active 状态的任务，遇到该错误请先 pause 再 remove，或改用 forceRemove。",
+        "对任务执行 pause（暂停）、unpause（继续）、remove（移除）、forceRemove（强制移除），" +
+        "或 removeResult（清除已完成 / 已失败任务的下载记录）。" +
+        "注意：remove 与 forceRemove 只对未结束的任务有效，若报 “Active Download not found”，" +
+        "说明任务已结束，应改用 removeResult 清理记录。",
       inputSchema: {
         gids: z.array(z.string().min(1)).min(1).describe("要操作的任务 gid 列表"),
         action: z.enum(CONTROL_ACTIONS).describe(`操作类型：${CONTROL_ACTIONS.join(" / ")}`)

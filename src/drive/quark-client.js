@@ -150,16 +150,28 @@ export async function listFiles ({
  *
  * ⚠️ 返回的 download_url 带 auth_key 签名，通常约 1 小时过期，且存在防盗链，
  *    下载时必须携带 UA 与 Referer（由 aria2 请求头注入）。
- * @param {string[]} fids
+ *
+ * 传入 pwdId 与 stoken 时，可以直接获取「分享内文件」的直链而无需先转存：
+ * 实测仅带 fids 会返回 code=21001 file not found；加上分享上下文后返回 code=0。
+ *
+ * @param {string[]} fids 文件 fid（本账号网盘 fid 或分享空间 fid）
+ * @param {{pwdId?: string, stoken?: string}} [shareContext] 分享上下文，二者同时提供才生效
  */
-export async function getDownloadLinks (fids) {
+export async function getDownloadLinks (fids, { pwdId = "", stoken = "" } = {}) {
   const list = (Array.isArray(fids) ? fids : [fids]).map((fid) => String(fid)).filter((fid) => fid !== "");
 
   if (list.length === 0) throw new Error("fids 不能为空");
 
+  const body = { fids: list };
+
+  if (pwdId !== "" && stoken !== "") {
+    body.pwd_id = pwdId;
+    body.stoken = stoken;
+  }
+
   const payload = await request("/1/clouddrive/file/download", {
     method: "POST",
-    body: { fids: list }
+    body
   });
 
   return Array.isArray(payload.data) ? payload.data : [];
