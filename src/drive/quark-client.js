@@ -163,3 +163,54 @@ export async function getDownloadLinks (fids) {
 
   return Array.isArray(payload.data) ? payload.data : [];
 }
+
+/**
+ * 获取分享会话凭证（stoken）。
+ *
+ * 浏览分享内容前必须先换取 stoken；带提取码的分享需要同时提供 passcode。
+ * @param {{pwdId: string, passcode?: string}} params
+ * @returns {Promise<object>} 通常包含 stoken、pwd_id、title 等字段
+ */
+export async function getShareToken ({ pwdId, passcode = "" }) {
+  const payload = await request("/1/clouddrive/share/sharepage/token", {
+    method: "POST",
+    body: { pwd_id: pwdId, passcode }
+  });
+
+  return payload.data ?? {};
+}
+
+/**
+ * 列出分享内某一层的文件。
+ *
+ * 注意：返回条目中的 fid 属于分享空间，与本账号网盘 fid 不同；
+ * share_fid_token 是后续转存操作所需的凭证。
+ * @param {{pwdId: string, stoken: string, pdirFid?: string, page?: number, size?: number, sort?: string}} params
+ */
+export async function getShareDetail ({ pwdId, stoken, pdirFid = "0", page = 1, size = 50, sort }) {
+  const query = {
+    pwd_id: pwdId,
+    stoken,
+    pdir_fid: pdirFid || "0",
+    force: 0,
+    _page: page,
+    _size: size,
+    _fetch_banner: 0,
+    _fetch_share: 1,
+    _fetch_total: 1,
+    _sort: sort || "file_type:asc,updated_at:desc"
+  };
+
+  const payload = await request("/1/clouddrive/share/sharepage/detail", { query });
+  const meta = readMetadata(payload, { page, size });
+
+  return {
+    items: Array.isArray(payload.data?.list) ? payload.data.list : [],
+    share: payload.data?.share ?? null,
+    page: meta.page,
+    size: meta.size,
+    count: meta.count,
+    total: meta.total,
+    reqId: meta.reqId
+  };
+}

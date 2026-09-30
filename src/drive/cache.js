@@ -73,6 +73,8 @@ export function cacheSet (key, payload) {
     size: payload.size ?? 0,
     count: payload.count ?? 0,
     total: payload.total ?? 0,
+    // 分享浏览时用于展示的分享标题，普通目录查询为 undefined
+    shareTitle: payload.shareTitle ?? "",
     reqId: payload.reqId ?? null,
     fetchedAt: Date.now()
   });

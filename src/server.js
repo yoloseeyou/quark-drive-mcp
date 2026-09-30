@@ -19,14 +19,17 @@ export const SERVER_INFO = {
 };
 
 const INSTRUCTIONS = [
-  "这是一个面向夸克网盘的 MCP 服务，提供四类能力：",
+  "这是一个面向夸克网盘的 MCP 服务，提供五类能力：",
   "1) 查询：drive_list_files（列出一层目录）、drive_resolve_path（按路径逐层解析 fid）。",
   "2) 取链：drive_get_download_links（按 fid 获取带签名的下载直链）。",
   "3) 下载：drive_push_to_aria2（提交到 aria2 RPC）、aria2_task_status、aria2_task_control。",
   "4) 搜索：tavily_search（关键词 AI 搜索）、tavily_extract_links（读取页面提取网盘分享链接）。",
+  "5) 分享浏览（只读）：drive_parse_share_link（解析分享链接）、drive_list_share_files（浏览分享内容）。",
   "另有 drive_cache_manage 用于查看与清理目录缓存。",
-  "推荐流程：先用 drive_resolve_path 或 drive_list_files 定位文件 fid，",
-  "再用 drive_get_download_links 获取直链，最后用 drive_push_to_aria2 提交下载。",
+  "推荐流程：用 tavily_search / tavily_extract_links 获取分享链接 → drive_parse_share_link 解析 → ",
+  "drive_list_share_files 浏览分享内容 → 转存到自己网盘（尚未实现）→ drive_resolve_path 或 drive_list_files 定位 fid → ",
+  "drive_get_download_links 获取直链 → drive_push_to_aria2 提交下载。",
+  "注意：分享内文件的 fid 与本账号网盘 fid 不是同一套，不能直接用于获取直链。",
   "目录查询结果按父目录 fid 缓存并带 TTL，返回文本会明确提示「缓存命中 / 来自网络」。"
 ].join("\n");
 

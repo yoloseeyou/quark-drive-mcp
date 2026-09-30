@@ -5,12 +5,14 @@
 import { registerAria2Tools } from "./aria2.js";
 import { registerDriveTools } from "./drive.js";
 import { registerSearchTools } from "./search.js";
+import { registerShareTools } from "./share.js";
 
 /**
  * @param {import("@modelcontextprotocol/sdk/server/mcp.js").McpServer} server
  */
 export function registerTools (server) {
   registerDriveTools(server);
+  registerShareTools(server);
   registerAria2Tools(server);
   registerSearchTools(server);
 }
