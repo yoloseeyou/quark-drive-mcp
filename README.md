@@ -161,7 +161,8 @@ pnpm start:http
 | `aria2_task_control`       | `gids`、`action`                            | `pause` / `unpause` / `remove` / `forceRemove`     |
 | `drive_cache_manage`       | `action`、`pdir_fid`                        | 查看缓存统计，或 `clear` / `invalidate` 清理       |
 | `tavily_search`            | `query`、`max_results`、`search_depth`      | 基于 Tavily 的关键词 AI 搜索，返回标题/URL/摘要    |
-| `tavily_extract_links`     | `urls`、`extract_depth`                     | 读取页面正文并提取网盘分享链接                     |
+| `tavily_extract_links`     | `urls`、`extract_depth`                     | 读取指定页面正文并提取网盘分享链接                 |
+| `tavily_search_links`      | `query`、`max_results`、`extract_limit`     | 一步完成搜索 + 抓正文 + 提取网盘链接（含提取码）   |
 | `drive_parse_share_link`   | `link`                                      | 解析分享链接为 `pwd_id` 与提取码（不发起网络请求） |
 | `drive_list_share_files`   | `link` 或 `pwd_id`、`passcode`、`pdir_fid`  | 浏览分享内文件（只读；分享内 fid 不可直接取直链）  |
 
@@ -169,7 +170,7 @@ pnpm start:http
 
 ```mermaid
 flowchart LR
-    S[tavily_search<br/>tavily_extract_links] --> P[drive_parse_share_link<br/>链接 → pwd_id]
+    S[tavily_search_links<br/>搜索并提取网盘链接] --> P[drive_parse_share_link<br/>链接 → pwd_id]
     P --> L[drive_list_share_files<br/>浏览分享内容]
     L -.->|转存尚未实现| R[drive_resolve_path<br/>路径 → fid]
     F[drive_list_files<br/>fid → 子项] --> R
