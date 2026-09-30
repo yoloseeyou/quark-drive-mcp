@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 
-import { dedupeShareLinks, extractShareLinks } from "../search/share-links.js";
+import { dedupeShareLinks, extractShareLinks, sortShareLinks } from "../search/share-links.js";
 import { extract, search } from "../search/tavily-client.js";
 import { toolError } from "./shared.js";
 
@@ -111,7 +111,7 @@ export function registerSearchTools (server) {
           };
         });
 
-        const links = dedupeShareLinks(collected);
+        const links = sortShareLinks(dedupeShareLinks(collected));
         const answer = data.answer ? String(data.answer) : "";
 
         const lines = [`🔍 搜索：${query}`, `结果 ${results.length} 条`];
@@ -136,6 +136,13 @@ export function registerSearchTools (server) {
           );
         } else if (include_raw_content) {
           lines.push("", "（未从摘要与正文中提取到网盘链接）");
+        }
+
+        if (links.some((link) => link.foundIn === "snippet")) {
+          lines.push(
+            "",
+            "⚠️ 标注 snippet 的链接来自搜索摘要，可能被截断；建议开启 include_raw_content，或改用 tavily_search_links 从页面正文确认。"
+          );
         }
 
         return {
@@ -374,7 +381,7 @@ export function registerSearchTools (server) {
           }
         }
 
-        const links = dedupeShareLinks(collected);
+        const links = sortShareLinks(dedupeShareLinks(collected));
 
         const lines = [
           `🔍 搜索：${query}`,
@@ -394,6 +401,10 @@ export function registerSearchTools (server) {
             );
             lines.push(`   来源：${link.sourceTitle || link.sourceUrl}（${link.foundIn}）`);
           });
+        }
+
+        if (links.some((link) => link.foundIn === "snippet")) {
+          lines.push("", "⚠️ 标注 snippet 的链接来自搜索摘要、可能被截断，请以来源页正文中的链接为准。");
         }
 
         if (failed.length > 0) {

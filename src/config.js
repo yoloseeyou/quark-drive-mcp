@@ -29,18 +29,11 @@ function mask (value) {
 let cached = null;
 
 function buildConfig () {
-  const cookie = envStr("QUARK_COOKIE");
-
-  if (cookie === "") {
-    throw new Error(
-      "缺少必要环境变量 QUARK_COOKIE（夸克网盘登录 Cookie）。" +
-      "请在项目根目录 .env 中配置，或由 MCP 客户端的 env 传入，可参考 .env.example。"
-    );
-  }
-
+  // ⚠️ 这里刻意不做必填校验：夸克 Cookie 只影响网盘相关能力。
+  // 若在构建配置时就抛错，会导致 Tavily 等无关能力被一并阻断（校验放到 requireQuarkConfig）。
   return {
     quark: {
-      cookie,
+      cookie: envStr("QUARK_COOKIE"),
       baseUrl: envStr("QUARK_BASE_URL", "https://drive.quark.cn").replace(/\/+$/, ""),
       userAgent: envStr("QUARK_USER_AGENT", DEFAULT_USER_AGENT),
       referer: envStr("QUARK_REFERER", "https://pan.quark.cn/"),
@@ -67,14 +60,17 @@ function buildConfig () {
       platform: `${process.platform}/${process.arch}`,
       cwd: process.cwd(),
       // 供 config://server 展示，不包含任何敏感值
-      dotenvLoaded: envStr("QUARK_COOKIE") !== ""
+      quarkCookieConfigured: envStr("QUARK_COOKIE") !== ""
     }
   };
 }
 
 /**
- * 获取配置单例。缺少必填项时抛出可读错误，由工具层转换为 isError 结果。
- * @returns {{quark: object, aria2: object, cache: object, runtime: object}}
+ * 获取配置单例（不做必填校验）。
+ *
+ * 各能力在使用点自行校验所需配置：网盘侧用 requireQuarkConfig()，
+ * Tavily 侧在 tavily-client 中校验 API Key。这样「未配置某一项」不会拖垮其它能力。
+ * @returns {{quark: object, aria2: object, cache: object, tavily: object, runtime: object}}
  */
 export function getConfig () {
   if (cached === null) cached = buildConfig();
@@ -82,22 +78,37 @@ export function getConfig () {
 }
 
 /**
- * 生成可安全展示的配置快照（敏感值脱敏）。
- * 无论配置是否完整都不会抛异常，便于用于 config://server 资源。
+ * 获取夸克网盘配置；未配置 Cookie 时抛出可读错误。
+ * 由工具层捕获后转换为 isError 结果。
+ * @returns {object} quark 配置
  */
-export function describeConfig () {
-  let config;
-  try {
-    config = getConfig();
-  } catch (err) {
-    return { configured: false, error: err.message };
+export function requireQuarkConfig () {
+  const { quark } = getConfig();
+
+  if (quark.cookie === "") {
+    throw new Error(
+      "缺少必要环境变量 QUARK_COOKIE（夸克网盘登录 Cookie）。" +
+      "请在项目根目录 .env 中配置，或由 MCP 客户端的 env 传入，可参考 .env.example。"
+    );
   }
 
+  return quark;
+}
+
+/**
+ * 生成可安全展示的配置快照（敏感值脱敏）。
+ * 任何情况下都不会抛异常，便于用于 config://server 资源。
+ * `configured` 表示「夸克网盘侧是否可用」，Tavily 与 aria2 各自的配置状态单列。
+ */
+export function describeConfig () {
+  const config = getConfig();
+  const quarkConfigured = config.quark.cookie !== "";
+
   return {
-    configured: true,
+    configured: quarkConfigured,
     quark: {
       baseUrl: config.quark.baseUrl,
-      cookie: `已配置（${config.quark.cookie.length} 字符，${mask(config.quark.cookie)}）`,
+      cookie: quarkConfigured ? `已配置（${config.quark.cookie.length} 字符，${mask(config.quark.cookie)}）` : "未配置",
       userAgent: config.quark.userAgent,
       referer: config.quark.referer,
       origin: config.quark.origin,
@@ -122,6 +133,6 @@ export function describeConfig () {
 /** 供日志使用：只输出脱敏后的关键配置，绝不打印 Cookie 明文 */
 export function configSummaryForLog () {
   const described = describeConfig();
-  if (!described.configured) return "配置未就绪";
-  return `quark=${described.quark.baseUrl} aria2=${described.aria2.rpcUrl} tavily=${described.tavily.apiKey} cacheTtl=${described.cache.ttlMs}ms`;
+  const quarkState = described.configured ? described.quark.baseUrl : "未配置（仅网盘能力不可用）";
+  return `quark=${quarkState} aria2=${described.aria2.rpcUrl} tavily=${described.tavily.apiKey} cacheTtl=${described.cache.ttlMs}ms`;
 }

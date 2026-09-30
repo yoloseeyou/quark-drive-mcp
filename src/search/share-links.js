@@ -10,16 +10,27 @@
 
 /**
  * 各平台分享链接特征。
- * 末尾可选查询串用于保留 ?pwd=xxxx，否则规范化时会把提取码一起丢掉。
+ *
+ * 两点关键设计：
+ *  1) 用捕获组单独取出「分享 ID」，便于做长度校验；
+ *  2) 末尾可选查询串，用于保留 ?pwd=xxxx，否则规范化时会把提取码一起丢掉。
+ *
+ * ID 中还允许 - 与 _（部分平台会用到），配合 MIN_ID_LENGTH 过滤被截断的片段。
  */
 const SHARE_PATTERNS = [
-  { type: "quark", pattern: /https?:\/\/pan\.quark\.cn\/(?:s|share)\/[A-Za-z0-9]+(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi },
-  { type: "baidu", pattern: /https?:\/\/pan\.baidu\.com\/s\/[A-Za-z0-9_-]+(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi },
-  { type: "alipan", pattern: /https?:\/\/(?:www\.)?(?:alipan|aliyundrive)\.com\/s\/[A-Za-z0-9]+(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi },
-  { type: "123pan", pattern: /https?:\/\/(?:www\.)?123pan\.com\/s\/[A-Za-z0-9_-]+(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi },
-  { type: "xunlei", pattern: /https?:\/\/pan\.xunlei\.com\/s\/[A-Za-z0-9_-]+(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi },
-  { type: "lanzou", pattern: /https?:\/\/[A-Za-z0-9.-]*lanzou[A-Za-z0-9]*\.com\/[A-Za-z0-9/_-]+(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi }
+  { type: "quark", pattern: /https?:\/\/pan\.quark\.cn\/(?:s|share)\/([A-Za-z0-9_-]+)(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi, minIdLength: 8 },
+  { type: "baidu", pattern: /https?:\/\/pan\.baidu\.com\/s\/([A-Za-z0-9_-]+)(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi, minIdLength: 8 },
+  { type: "alipan", pattern: /https?:\/\/(?:www\.)?(?:alipan|aliyundrive)\.com\/s\/([A-Za-z0-9_-]+)(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi, minIdLength: 8 },
+  { type: "123pan", pattern: /https?:\/\/(?:www\.)?123pan\.com\/s\/([A-Za-z0-9_-]+)(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi, minIdLength: 6 },
+  { type: "xunlei", pattern: /https?:\/\/pan\.xunlei\.com\/s\/([A-Za-z0-9_-]+)(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi, minIdLength: 8 },
+  { type: "lanzou", pattern: /https?:\/\/[A-Za-z0-9.-]*lanzou[A-Za-z0-9]*\.com\/([A-Za-z0-9/_-]+)(?:\?[^\s"'<>「」【】（）()，,；;。]*)?/gi, minIdLength: 5 }
 ];
+
+/**
+ * 链接被截断的迹象。
+ * 搜索摘要常把 URL 截成「https://pan.quark.cn/s/145d…」，此类残链无法补全，必须丢弃。
+ */
+const TRUNCATION_MARKERS = new Set(["…", "..."]);
 
 /** 正文中提取码的常见写法 */
 const PASSCODE_TEXT_PATTERN = /(?:提取码|访问码|提取密码|密码|passcode|pwd)\s*[:：=]?\s*([A-Za-z0-9]{4})/i;
@@ -78,13 +89,21 @@ export function extractShareLinks (text, { sourceUrl = "", sourceTitle = "", fou
 
   const records = [];
 
-  for (const { type, pattern } of SHARE_PATTERNS) {
+  for (const { type, pattern, minIdLength } of SHARE_PATTERNS) {
     for (const match of raw.matchAll(pattern)) {
       const matched = match[0];
+      const shareId = match[1] ?? "";
+
+      // 过滤被截断的残链：ID 过短，或紧接着省略号
+      if (shareId.length < (minIdLength ?? 6)) continue;
+
+      const index = match.index ?? 0;
+      const tail = raw.slice(index + matched.length, index + matched.length + 3);
+      if ([...TRUNCATION_MARKERS].some((marker) => tail.startsWith(marker))) continue;
+
       const url = normalizeShareUrl(matched);
       if (url === "") continue;
 
-      const index = match.index ?? 0;
       // 以链接为中心取一段窗口文本，用于寻找「提取码：xxxx」这类写法
       const around = raw.slice(Math.max(0, index - window), index + matched.length + window);
 
@@ -131,5 +150,27 @@ export function dedupeShareLinks (records) {
     }
   }
 
-  return [...map.values()];
+  const values = [...map.values()];
+
+  // 同一平台内若两个 ID 互为前缀，较短的通常是页面里被截断的产物（如 VOQcw5d3d6opzg1B 与
+  // VOQcw5d3d6opzg1B_Q42LSK8A1 并存），丢弃短的那个，避免给出无效链接
+  return values.filter((record) => {
+    const base = record.url.split("?")[0];
+
+    return !values.some((other) => {
+      if (other === record || other.type !== record.type || other.url === record.url) return false;
+      const otherBase = other.url.split("?")[0];
+      return otherBase.startsWith(base) && otherBase.length > base.length;
+    });
+  });
+}
+
+/**
+ * 按来源可信度排序：raw（页面正文）> url（结果地址）> snippet（搜索摘要，可能被截断）。
+ * @param {object[]} records
+ */
+export function sortShareLinks (records) {
+  return [...records].sort(
+    (a, b) => (FOUND_IN_RANK[b.foundIn] ?? 0) - (FOUND_IN_RANK[a.foundIn] ?? 0)
+  );
 }

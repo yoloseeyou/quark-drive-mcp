@@ -11,7 +11,7 @@
  *  - 响应 HTTP 200 不代表成功，必须校验 code === 0；
  *  - 分页元数据位于响应「顶层」metadata（_page / _size / _count / _total）。
  */
-import { getConfig } from "../config.js";
+import { requireQuarkConfig } from "../config.js";
 import { logger } from "../logger.js";
 
 /** 夸克接口业务错误。code 非 0 时抛出，便于上层区分「凭证失效」「目录不存在」等情况 */
@@ -26,7 +26,8 @@ export class QuarkApiError extends Error {
 }
 
 function buildHeaders () {
-  const { quark } = getConfig();
+  // 未配置 QUARK_COOKIE 时在此抛出可读错误，由工具层转为 isError
+  const quark = requireQuarkConfig();
 
   return {
     cookie: quark.cookie,
@@ -43,7 +44,7 @@ function buildHeaders () {
  * @param {{method?: string, query?: Record<string, unknown>, body?: unknown}} options
  */
 async function request (pathname, { method = "GET", query = {}, body } = {}) {
-  const { quark } = getConfig();
+  const quark = requireQuarkConfig();
 
   const url = new URL(`${quark.baseUrl}${pathname}`);
   url.searchParams.set("pr", quark.pr);
