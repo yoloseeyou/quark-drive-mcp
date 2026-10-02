@@ -26,7 +26,13 @@ function ttlMs () {
 }
 
 function maxEntries () {
-  return envInt("DRIVE_CACHE_MAX_ENTRIES", 500);
+  // min=0：允许 DRIVE_CACHE_MAX_ENTRIES=0 表示「关闭缓存」
+  return envInt("DRIVE_CACHE_MAX_ENTRIES", 500, 0);
+}
+
+/** 缓存是否启用（容量为 0 即关闭） */
+export function cacheEnabled () {
+  return maxEntries() > 0;
 }
 
 /** 构造缓存键 */
@@ -64,6 +70,9 @@ export function cacheGet (key) {
 
 /** 写入缓存 */
 export function cacheSet (key, payload) {
+  // 容量为 0 表示关闭缓存：直接丢弃，不占内存
+  if (!cacheEnabled()) return;
+
   if (store.size >= maxEntries()) evict();
 
   store.set(key, {
@@ -129,6 +138,7 @@ export function cacheStats () {
   }
 
   return {
+    enabled: cacheEnabled(),
     entries: store.size,
     maxEntries: maxEntries(),
     ttlMs: ttl,

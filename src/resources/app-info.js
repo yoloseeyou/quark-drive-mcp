@@ -32,6 +32,8 @@ export function registerAppInfoResources (server) {
         version: SERVER_INFO.version,
         protocolVersionHint: "由客户端在 initialize 时协商确定",
         transport: process.env.MCP_TRANSPORT || "stdio",
+        // 仅暴露「是否启用」的布尔量，绝不回显令牌本身
+        httpAuthRequired: (process.env.MCP_HTTP_TOKEN || "").trim() !== "",
         pid: process.pid,
         nodeVersion: process.version,
         startedAt: STARTED_AT,

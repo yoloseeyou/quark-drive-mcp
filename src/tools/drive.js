@@ -272,6 +272,7 @@ export function registerDriveTools (server) {
         action: z.string(),
         message: z.string(),
         stats: z.object({
+          enabled: z.boolean().describe("缓存是否启用；DRIVE_CACHE_MAX_ENTRIES=0 时为 false"),
           entries: z.number(),
           maxEntries: z.number(),
           ttlSeconds: z.number(),
@@ -317,6 +318,7 @@ export function registerDriveTools (server) {
         // 因此必须显式裁剪为 schema 声明的字段，不能把 cacheStats() 原样返回。
         const raw = cacheStats();
         const stats = {
+          enabled: raw.enabled,
           entries: raw.entries,
           maxEntries: raw.maxEntries,
           ttlSeconds: raw.ttlSeconds,
@@ -327,11 +329,13 @@ export function registerDriveTools (server) {
           inflight: raw.inflight
         };
 
-        const text = [
-          message,
-          `条目 ${stats.entries}/${stats.maxEntries} · 命中 ${stats.hits} · 未命中 ${stats.misses} · ` +
-          `过期 ${stats.staleEntries} · 淘汰 ${stats.evictions} · TTL ${stats.ttlSeconds}s`
-        ].join("\n");
+        const text = stats.enabled
+          ? [
+              message,
+              `条目 ${stats.entries}/${stats.maxEntries} · 命中 ${stats.hits} · 未命中 ${stats.misses} · ` +
+              `过期 ${stats.staleEntries} · 淘汰 ${stats.evictions} · TTL ${stats.ttlSeconds}s`
+            ].join("\n")
+          : [message, "缓存当前已关闭（DRIVE_CACHE_MAX_ENTRIES=0），所有查询都直接请求夸克接口。"].join("\n");
 
         return {
           content: [{ type: "text", text }],

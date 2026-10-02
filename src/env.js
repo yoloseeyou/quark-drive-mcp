@@ -27,8 +27,16 @@ export function envStr (name, fallback = "") {
   return trimmed === "" ? fallback : trimmed;
 }
 
-/** 读取正整数环境变量，非法值回退到默认值 */
-export function envInt (name, fallback) {
+/**
+ * 读取非负整数环境变量，非法值回退到默认值。
+ *
+ * @param {string} name 变量名
+ * @param {number} fallback 默认值
+ * @param {number} [min] 允许的最小值，默认 1。
+ *   传 0 可让「0」成为合法取值，用于表达「容量为 0 即关闭」这类语义
+ *   （如 DRIVE_CACHE_MAX_ENTRIES=0 关闭目录缓存）。
+ */
+export function envInt (name, fallback, min = 1) {
   const parsed = Number.parseInt(String(process.env[name] ?? ""), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
 }

@@ -335,7 +335,8 @@ export function registerSearchTools (server) {
       annotations: {
         title: "搜索并提取网盘链接",
         readOnlyHint: true,
-        idempotentHint: false,
+        // 与 tavily_search 保持一致：同为只读网络搜索，重复调用不会产生额外副作用
+        idempotentHint: true,
         openWorldHint: true
       }
     },
