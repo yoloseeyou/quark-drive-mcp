@@ -13,3 +13,4 @@ Thumbs.db
 !.vscode/mcp.json
 coverage/
 dist/
+.workbuddy
